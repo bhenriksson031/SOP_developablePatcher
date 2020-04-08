@@ -35,13 +35,17 @@ endif()
 
 # Prepare the build environment
 #TODO ACTIVATE THESE BACK ON
-#include_directories(${LIBIGL_INCLUDE_DIRS})
-#add_definitions(${LIBIGL_DEFINITIONS})
+include_directories(${LIBIGL_INCLUDE_DIRS})
+add_definitions(${LIBIGL_DEFINITIONS})
 
 ### END OF DEVELOPABILITY OF TRIANGLE MESHES ###
 
 include_directories(${CMAKE_SOURCE_DIR}/external/eigen)
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/libigl/include)
 #include_directories(${CMAKE_SOURCE_DIR}/external/libigl/include)
+
+include_directories(${CMAKE_SOURCE_DIR})
 
 set( library_name SOP_developablePatcher )
 
@@ -50,6 +54,7 @@ houdini_generate_proto_headers( FILES SOP_developablePatcher.C )
 
 # Add a library and its source files.
 add_library( ${library_name} SHARED
+	include/converters.cpp
     SOP_developablePatcher.C
     SOP_developablePatcher.h
 )

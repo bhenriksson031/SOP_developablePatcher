@@ -8,6 +8,7 @@
 #include "SOP_developablePatcher.proto.h"
 
 #include <GU/GU_Detail.h>
+#include <GU/GU_PrimPoly.h>
 #include <GEO/GEO_PrimPoly.h>
 #include <OP/OP_Operator.h>
 #include <OP/OP_OperatorTable.h>
@@ -19,8 +20,22 @@
 #include <SYS/SYS_Math.h>
 #include <limits.h>
 
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+
+
+
 #include <OP/OP_AutoLockInputs.h>
-//#include <include/houdiniVoronoiGraph.h>
+#include <include/converters.h>
+#include <include/devFlow_types.h>
+#include <include/devFlow_meshstruct.h>
+#include "include/devFlow_timestepstruct.h"
+
+#include <developableflow/energy_selector.h>
+#include <developableflow/curvature_energy.h>
+#include <include/developableflow/timestep.h>
+
+
 
 using namespace HDK_Beh;
 
@@ -87,10 +102,46 @@ SOP_developablePatcher::myTemplateList[] = {
 	PRM_Template(),
 };
 
+void
+matrix_to_mesh(const Eigen::MatrixXd &points, const Eigen::MatrixXi &faces, GU_Detail &gdp)
+{
+	printf("matrix_to_mesh...\n");
+	GA_Offset ptoff;
+	UT_Vector3 pos;
+	printf("appending points...\n");
+	gdp.clear();
+	gdp.appendPointBlock((GA_Size)points.rows());
+	printf("in points: %i...\n", int(gdp.getNumPoints()));
+	printf("out points: %i...\n", int(points.rows()));
+	printf("in faces: %i...\n", int(gdp.getNumPrimitives())); 
+	printf("out faces: %i...\n", int(faces.rows()));
+	printf("setting point positions...\n");
+	GA_FOR_ALL_PTOFF(&gdp, ptoff) {
+		//printf("pt: %i...\n", int(ptoff) );
+		pos.x() = points(static_cast<uint>(ptoff), 0);
+		pos.y() = points(static_cast<uint>(ptoff), 1);
+		pos.z() = points(static_cast<uint>(ptoff), 2);
+		//printf("set pos: %lf...\n", pos.x());
+		gdp.setPos3(ptoff, pos);
+	}
+
+	// TODO: expand to size of matrix
+	//gdp.appendPrimitiveBlock()
+	printf("doing faces...\n");
+	for (uint i = 0; i < faces.rows(); ++i) {
+		GU_PrimPoly *prim = GU_PrimPoly::build(&gdp, 0, false, false);
+		prim->appendVertex((GA_Index)faces(i, 0));
+		prim->appendVertex((GA_Index)faces(i, 1));
+		prim->appendVertex((GA_Index)faces(i, 2));
+	}
+	//return error();
+}
+
+
 OP_ERROR
 SOP_developablePatcher::cookMySop(OP_Context &context)
 {
-	//printf("SOP_developablePatcher::cook...\n");
+	printf("SOP_developablePatcher::cook...\n");
 	OP_AutoLockInputs inputs(this);
 	if (inputs.lock(context) >= UT_ERROR_ABORT)
 		return error();
@@ -112,8 +163,22 @@ SOP_developablePatcher::cookMySop(OP_Context &context)
 	bool do_resample = GETRESAMPLE();
 	bool keep_outside_segments = GETKEEPOUTIDES();
 	bool remove_point_segments = GETREMOVEPOINTSEGS();
-	//vor_diagram.addVoronoiGraphToHoudiniGeo(gdp, bound, mag, do_boundary_geo, do_resample, keep_outside_segments, remove_point_segments);
 
+	Eigen::MatrixXi F;
+	Eigen::MatrixXd V;
+	printf("SOP_developablePatcher::cook...\n");
+	detail_to_eigen(*gdp, V, F);
+	Developables::Mesh m; //Mesh struct
+	m = Developables::Mesh(V, F);
+	Timestep t_step; //Timestep struct
+	Linesearch linesearchMode = LINESEARCH_NONE;
+	StepType stepType = STEP_TYPE_GRADDESC;
+	EnergyType energyMode = ENERGY_TYPE_HINGE;
+	t_step.t = mag;
+	printf("solving...\n");
+	int success = timestep(m.V, m.F, m.VF, m.VFi, m.isB, t_step.t, t_step.p, t_step.energy, t_step.energyGrad, linesearchMode, stepType, energyMode);
+	printf("remeshing...\n");
+	matrix_to_mesh(m.V, m.F, *gdp);
 	inputs.unlock();
 	return error();
 
