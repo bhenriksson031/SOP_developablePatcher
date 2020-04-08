@@ -38,6 +38,8 @@ protected:
     virtual ~SOP_developablePatcher() {}
 
 private: 
+
+	double GETITERS() { return evalInt("iters", 0, 0); }
 	double GETBOUND() { return evalFloat("bound", 0, 0); }
 	double GETMAG() { return evalFloat("mag", 0, 0); }
 	bool GETDOBOUNDARYGEO() { return evalInt("doBoundaryGeo", 0, 0) == 1 ? true : false;}

@@ -80,7 +80,7 @@ static const char *theDsFile = R"THEDSFILE(
 )THEDSFILE";
 
 static PRM_Name names[] = {
-	PRM_Name("divs",	"Divisions"),
+	PRM_Name("iters",	"Iterations"),
 	PRM_Name("bound",	"Boundary Distance"),
 	PRM_Name("mag",	"Mag"),
 	PRM_Name("doBoundaryGeo",	"Boundary Geo"),
@@ -101,34 +101,72 @@ SOP_developablePatcher::myTemplateList[] = {
 	PRM_Template(PRM_DIRECTION, 3, &PRMdirectionName, PRMzaxisDefaults),
 	PRM_Template(),
 };
+void mesh_to_matrix(GU_Detail &gdp, OMatrixXs &points, OMatrixXi &faces)
+{
+	printf("in mesh_to_matrix...\n");
+	points.resize(0,0); faces.resize(0, 0);
+	points.resize(gdp.getNumPoints()*3,1);
+	printf("size %i, %i \n", points.rows(), points.cols());
+	GA_Offset ptoff;
+	printf("getting points\n");
+	int i = 0;
+	int j = 0;
+	GA_FOR_ALL_PTOFF(&gdp, ptoff) {
+		i+=1;
+		if ((int)ptoff<0 || (int)ptoff*3 > points.rows() ) {
+			printf("too many ptoffs!!\n");
+			break;
+		}
+		//printf("pt %i\n", (int)ptoff);
+		const UT_Vector3 pos = gdp.getPos3(ptoff);
+		j+=1;
+		points(static_cast<uint>(ptoff)*3,	0) = pos.x();
+		points(static_cast<uint>(ptoff)*3+1,0) = pos.y();
+		points(static_cast<uint>(ptoff)*3+2,0) = pos.z();
+	}
+
+	printf("resizing faces\n");
+	faces.resize(gdp.getNumPrimitives(), 3);
+	printf("done resizing faces\n");
+	GEO_Primitive *prim;
+	GA_FOR_ALL_PRIMITIVES(&gdp, prim)
+	{
+		const int vertex_count = prim->getVertexCount();
+		for (int vt = 0; vt < vertex_count; ++vt) {
+			const GA_Offset voff = prim->getPointOffset(vt);
+			faces(prim->getMapIndex(), SYSmin(vt, 2)) = static_cast<int>(voff);
+		}
+	}
+}
 
 void
-matrix_to_mesh(const Eigen::MatrixXd &points, const Eigen::MatrixXi &faces, GU_Detail &gdp)
+matrix_to_mesh(const OMatrixXs &points, const OMatrixXi &faces, GU_Detail &gdp)
 {
 	printf("matrix_to_mesh...\n");
 	GA_Offset ptoff;
 	UT_Vector3 pos;
 	printf("appending points...\n");
 	gdp.clear();
-	gdp.appendPointBlock((GA_Size)points.rows());
-	printf("in points: %i...\n", int(gdp.getNumPoints()));
-	printf("out points: %i...\n", int(points.rows()));
-	printf("in faces: %i...\n", int(gdp.getNumPrimitives())); 
-	printf("out faces: %i...\n", int(faces.rows()));
+	gdp.appendPointBlock((GA_Size) points.rows()/3);
+	printf("in points:	%i...\n", int(gdp.getNumPoints()));
+	printf("out points: %i...\n", int(points.rows()/3));
+	printf("in faces:	%i...\n", int(gdp.getNumPrimitives())); 
+	printf("out faces:	%i...\n", int(faces.rows()));
 	printf("setting point positions...\n");
 	GA_FOR_ALL_PTOFF(&gdp, ptoff) {
 		//printf("pt: %i...\n", int(ptoff) );
-		pos.x() = points(static_cast<uint>(ptoff), 0);
-		pos.y() = points(static_cast<uint>(ptoff), 1);
-		pos.z() = points(static_cast<uint>(ptoff), 2);
+		pos.x() = points(static_cast<uint>(ptoff)*3);
+		pos.y() = points(static_cast<uint>(ptoff)*3+1);
+		pos.z() = points(static_cast<uint>(ptoff)*3+2);
 		//printf("set pos: %lf...\n", pos.x());
 		gdp.setPos3(ptoff, pos);
 	}
 
 	// TODO: expand to size of matrix
-	//gdp.appendPrimitiveBlock()
-	printf("doing faces...\n");
+	//gdp.appendPrimitiveBlock(GA_PRIMPOLY, (GA_Size)faces.rows());
+	printf("doing faces (%i)...\n", int(faces.rows()) );
 	for (uint i = 0; i < faces.rows(); ++i) {
+		//printf("face %i\n", i);
 		GU_PrimPoly *prim = GU_PrimPoly::build(&gdp, 0, false, false);
 		prim->appendVertex((GA_Index)faces(i, 0));
 		prim->appendVertex((GA_Index)faces(i, 1));
@@ -157,26 +195,31 @@ SOP_developablePatcher::cookMySop(OP_Context &context)
 	setCurGdh(0, myGdpHandle);
 
 	//boostVoronoiGraph vor_diagram;
-	double bound = GETBOUND();
+	double iters = GETITERS();
 	double mag = GETMAG();
 	double do_boundary_geo = GETDOBOUNDARYGEO();
 	bool do_resample = GETRESAMPLE();
 	bool keep_outside_segments = GETKEEPOUTIDES();
 	bool remove_point_segments = GETREMOVEPOINTSEGS();
-
-	Eigen::MatrixXi F;
-	Eigen::MatrixXd V;
-	printf("SOP_developablePatcher::cook...\n");
-	detail_to_eigen(*gdp, V, F);
+	printf("declare F and V...\n");
+	OMatrixXi F; //was  Eigen::MatrixXi in edgeyEggs
+	OMatrixXs V; //was  Eigen::MatrixXd 
+	printf("mesh_to_matrix...\n");
+	mesh_to_matrix(*gdp, V, F);
+	printf("set m...\n");
 	Developables::Mesh m; //Mesh struct
 	m = Developables::Mesh(V, F);
+	printf("declare timestap data...\n");
 	Timestep t_step; //Timestep struct
 	Linesearch linesearchMode = LINESEARCH_NONE;
 	StepType stepType = STEP_TYPE_GRADDESC;
 	EnergyType energyMode = ENERGY_TYPE_HINGE;
 	t_step.t = mag;
 	printf("solving...\n");
-	int success = timestep(m.V, m.F, m.VF, m.VFi, m.isB, t_step.t, t_step.p, t_step.energy, t_step.energyGrad, linesearchMode, stepType, energyMode);
+	for (int i = 0; i < iters; i++) {
+		printf("iteration %i..\n", i);
+		int success = timestep(m.V, m.F, m.VF, m.VFi, m.isB, t_step.t, t_step.p, t_step.energy, t_step.energyGrad, linesearchMode, stepType, energyMode);
+	}
 	printf("remeshing...\n");
 	matrix_to_mesh(m.V, m.F, *gdp);
 	inputs.unlock();
