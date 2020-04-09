@@ -25,6 +25,7 @@ IGL_INLINE void igl::vertex_triangle_adjacency(
   {
     for(Index i = 0; i < F.cols(); ++i)
     {
+		int F_fi_i = F(fi, i);
       VF[F(fi,i)].push_back(fi);
       VFi[F(fi,i)].push_back(i);
     }

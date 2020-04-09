@@ -40,12 +40,8 @@ protected:
 private: 
 
 	double GETITERS() { return evalInt("iters", 0, 0); }
-	double GETBOUND() { return evalFloat("bound", 0, 0); }
 	double GETMAG() { return evalFloat("mag", 0, 0); }
-	bool GETDOBOUNDARYGEO() { return evalInt("doBoundaryGeo", 0, 0) == 1 ? true : false;}
-	bool GETRESAMPLE() { return evalInt("resampleCurves", 0, 0) == 1 ? true : false;}
-	bool GETKEEPOUTIDES() { return evalInt("keepOutsideSegments", 0, 0) ==1 ? true:false; }
-	bool GETREMOVEPOINTSEGS() { return evalInt("removePointSegments", 0, 0) ==1 ? true:false; }
+
 };
 } // End HDK_Sample namespace
 
