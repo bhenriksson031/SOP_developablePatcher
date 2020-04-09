@@ -86,8 +86,7 @@ static PRM_Name names[] = {
 PRM_Template
 SOP_developablePatcher::myTemplateList[] = {
 	PRM_Template(PRM_INT,  1, &names[0], PRMzeroDefaults),
-	PRM_Template(PRM_FLT_J,	1, &names[2], PRMzeroDefaults, 0, &PRMscaleRange),
-	PRM_Template(PRM_DIRECTION, 3, &PRMdirectionName, PRMzaxisDefaults),
+	PRM_Template(PRM_FLT_J,	1, &names[1], PRMzeroDefaults, 0, &PRMscaleRange),
 	PRM_Template(),
 };
 void mesh_to_matrix(GU_Detail &gdp, OMatrixXs &points, OMatrixXi &faces)
